@@ -4,39 +4,56 @@
 
 -- Le service génère le plus de chiffre d'affaire
 SELECT s.nom_service, SUM(f.total_brut) AS chiffre_affaire_total
-FROM Facturation f
+FROM facturation f
 JOIN Service s ON f.id_service = s.id_service
 GROUP BY s.nom_service
 ORDER BY chiffre_affaire_total DESC
+;
 
 -- Le pays avec les utilisateurs qui paye le plus
 SELECT u.pays_utilisateur, SUM(f.total_brut) AS chiffre_affaire_total
-FROM Facturation f
-JOIN Utilisateur u ON f.id_utilisateur = u.id_utilisateur
+FROM facturation f
+JOIN utilisateur u ON f.id_utilisateur = u.id_utilisateur
 GROUP BY u.pays_utilisateur
 ORDER BY chiffre_affaire_total DESC
+;
 
 -- Le mois est le plus rentable de l'année
 SELECT d.annee, d.mois, SUM(f.total_brut) AS revenu_mensuel
-FROM Facturation f
-JOIN Date d ON f.id_date = d.id_date
+FROM facturation f
+JOIN date_aws d ON f.id_date = d.id_date
 -- WHERE d.annee = 2025 | Pour année spécifique
 GROUP BY d.annee, d.mois
 ORDER BY revenu_mensuel DESC
+;
 
 -- Le service le plus populaire (même s'il est pas le plus rentable)
 SELECT s.nom_service, COUNT(DISTINCT f.id_utilisateur) AS nombre_utilisateurs
-FROM Facturation f
-JOIN Service s ON f.id_service = s.id_service
+FROM facturation f
+JOIN service s ON f.id_service = s.id_service
 GROUP BY s.nom_service
 ORDER BY nombre_utilisateurs DESC
+;
 
 -- Le type de service par secteur d'activité et le prix moyen dépense
 SELECT s.categorie, u.secteur_activite, AVG(f.total_brut) AS prix_moyen_depense
-FROM Facturation f
-JOIN Service s ON f.id_service = s.id_service
-JOIN Utilisateur u ON f.id_utilisateur = u.id_utilisateur
-GROUP BY s.categorie, u.secteur_activite;
+FROM facturation f
+JOIN service s ON f.id_service = s.id_service
+JOIN utilisateur u ON f.id_utilisateur = u.id_utilisateur
+GROUP BY s.categorie, u.secteur_activite
+;
+
+-- Évolution annuelle du prix unitaire moyen par service
+SELECT
+    d.annee,
+    s.nom_service,
+    AVG(f.prix_unitaire) AS prix_unitaire_moyen
+FROM facturation f
+JOIN date_aws d ON f.id_date = d.id_date
+JOIN service s ON f.id_service = s.id_service
+GROUP BY d.annee, s.nom_service
+ORDER BY d.annee, s.nom_service
+;
 
 ------------------------------------------------
 -- REQUETES SUR LES COUTS OPERATIONNELS
@@ -44,26 +61,85 @@ GROUP BY s.categorie, u.secteur_activite;
 
 -- La localisation qui coûte le plus cher
 SELECT r.nom_az, r.data_center, SUM(a.cout_total_HC) AS cout_operationnel_total
-FROM Actifs a
-JOIN Region r ON a.id_localisation = r.id_localisation
+FROM actifs a
+JOIN localisation r ON a.id_localisation = r.id_localisation
 GROUP BY r.nom_az, r.data_center
 ORDER BY cout_operationnel_total DESC
+;
 
 -- Le type de service qui pèse le plus au cours d'une année
 SELECT s.nom_service, SUM(a.cout_total_HC) AS cout_annuel_par_service
-FROM Actifs a
-JOIN Service s ON a.id_service = s.id_service
-JOIN Date d ON a.id_date = d.id_date
+FROM actifs a
+JOIN service s ON a.id_service = s.id_service
+JOIN date_aws d ON a.id_date = d.id_date
 -- WHERE d.annee = 2025 | Pour année spécifique
 GROUP BY s.nom_service
-ORDER BY cout_annuel_par_service DESC;
+ORDER BY cout_annuel_par_service DESC
+;
 
--- Le type de ressource le moins fiable, soit celui qui a le plus de panne
-SELECT r.type_ressource, SUM(a.nb_prob_materiel) AS total_pannes
-FROM Actifs a
-JOIN Ressource r ON a.id_ressource = r.id_ressource
+-- Le mois de l'année qui coûte le plus cher
+SELECT d.annee, d.mois, SUM(a.cout_total) as cout_total_mensuel
+FROM actifs a
+JOIN date_aws d ON a.id_date = d.id_date
+GROUP BY d.annee, d.mois
+ORDER BY cout_total_mensuel DESC
+;
+
+------------------------------------------------
+-- REQUETES SUR LES INCIDENTS
+------------------------------------------------
+
+-- Le type de la ressource la plus souvent en panne (sans table pont, très coûteux)
+SELECT r.type_ressource, COUNT(DISTINCT i.id_incident) as nombre_pannes
+FROM incident i
+JOIN ressource r ON i.id_ressource = r.id_ressource
 GROUP BY r.type_ressource
-ORDER BY total_pannes DESC
+ORDER BY nombre_pannes DESC
+;
+
+-- Le type de la ressource la plus souvent en panne (avec table pont)
+SELECT r.type_ressource, COUNT(DISTINCT iv.id_incident) as nombre_pannes_intervenues
+FROM intervention iv
+JOIN ressource r ON iv.id_ressource = r.id_ressource
+GROUP BY r.type_ressource
+ORDER BY nombre_pannes_intervenues DESC
+;
+
+-- Le type de la ressource qui coûte le plus cher cher / impact le plus d'utilisateurs lors d'une panne (sans table pont)
+SELECT 
+    r.type_ressource,
+    SUM(i.cout_agent + i.cout_remboursement_estime) AS cout_total,
+    SUM(i.nb_utilisateurs_impactes) AS impact_total_utilisateurs
+FROM incident i
+JOIN ressource r ON i.id_ressource = r.id_ressource
+GROUP BY r.type_ressource
+ORDER BY cout_total DESC, impact_total_utilisateurs DESC
+;
+
+-- Les agents ayant résolu le plus de pannes (avec table pont)
+SELECT a.prenom_agent, a.nom_agent, COUNT(DISTINCT iv.id_incident) AS nombre_incidents_resolus
+FROM intervention iv
+JOIN agent a ON iv.id_agent = a.id_agent
+JOIN incident i ON iv.id_incident = i.id_incident
+JOIN statut s ON i.id_statut = s.id_statut
+WHERE s.nom_statut = 'closed'
+GROUP BY a.id_agent, a.prenom_agent, a.nom_agent
+ORDER BY nombre_incidents_resolus DESC
+;
+
+-- Classement des agents par performance (coût et volume) (avec table pont)
+SELECT 
+    a.nom_agent,
+    a.prenom_agent,
+    COUNT(DISTINCT p.id_incident) AS nombre_incidents_geres,
+    AVG(i.cout_agent) AS cout_moyen_par_incident,
+    SUM(i.cout_agent) AS cout_total_genere 
+FROM intervention p
+JOIN incident i ON p.id_incident = i.id_incident
+JOIN agent a ON p.id_agent = a.id_agent
+GROUP BY a.id_agent, a.nom_agent, a.prenom_agent
+ORDER BY cout_moyen_par_incident ASC, nombre_incidents_geres DESC
+;
 
 ------------------------------------------------
 -- REQUETES SUR LE MONITORING
@@ -71,29 +147,33 @@ ORDER BY total_pannes DESC
 
 -- Le service qui consomme le plus de CPU
 SELECT s.nom_service, AVG(m.CPU_utilisation) AS avg_cpu_utilisation
-FROM Monitoring m
-JOIN Service s ON m.id_service = s.id_service
+FROM monitoring m
+JOIN service s ON m.id_service = s.id_service
 GROUP BY s.nom_service
 ORDER BY avg_cpu_utilisation DESC
+;
 
 -- Quelles sont les utilisateurs les plus consommateur en ressource
 SELECT u.id_utilisateur, u.nom_legal, SUM(m.temps_total_actif) AS consommation_totale_temps
-FROM Monitoring m
-JOIN Utilisateur u ON m.id_utilisateur = u.id_utilisateur
-GROUP BY u.id_utilisateur, u.nom_legal
+FROM monitoring m
+JOIN utilisateurs u ON m.id_utilisateur = u.id_utilisateur
+GROUP BY u.id_utilisateur, u.nom_legal;=
 ORDER BY consommation_totale_temps DESC
+;
 
 -- Le mois de l’année le plus solliciter
 SELECT d.annee, d.mois, SUM(m.temps_total_actif) AS sollicitation_totale
-FROM Monitoring m
-JOIN Date d ON m.id_date = d.id_date
+FROM monitoring m
+JOIN date_aws d ON m.id_date = d.id_date
 -- WHERE d.annee = 2025 | Pour année spécifique
 GROUP BY d.annee, d.mois
 ORDER BY sollicitation_totale DESC
+;
 
 -- Temps réel d'utilisation d'un service, grâce au temps total actif
 SELECT s.nom_service, SUM(m.temps_total_actif) AS utilisation_reelle_totale
-FROM Monitoring m
-JOIN Service s ON m.id_service = s.id_service
+FROM monitoring m
+JOIN service s ON m.id_service = s.id_service
 GROUP BY s.nom_service
-ORDER BY utilisation_reelle_totale DESC;
+ORDER BY utilisation_reelle_totale DESC
+;
