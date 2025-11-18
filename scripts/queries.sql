@@ -13,7 +13,8 @@ ORDER BY chiffre_affaire_total DESC
 -- Le pays avec les utilisateurs qui paye le plus
 SELECT u.pays_utilisateur, SUM(f.total_brut) AS chiffre_affaire_total
 FROM facturation f
-JOIN utilisateur u ON f.id_utilisateur = u.id_utilisateur
+JOIN utilisateurs_dynamique u ON f.id_utilisateur = u.id_utilisateur
+WHERE u.est_actif = 'Y'
 GROUP BY u.pays_utilisateur
 ORDER BY chiffre_affaire_total DESC
 ;
@@ -39,7 +40,8 @@ ORDER BY nombre_utilisateurs DESC
 SELECT s.categorie, u.secteur_activite, AVG(f.total_brut) AS prix_moyen_depense
 FROM facturation f
 JOIN service s ON f.id_service = s.id_service
-JOIN utilisateur u ON f.id_utilisateur = u.id_utilisateur
+JOIN utilisateurs_dynamique u ON f.id_utilisateur = u.id_utilisateur
+WHERE u.est_actif = 'Y'
 GROUP BY s.categorie, u.secteur_activite
 ;
 
@@ -156,7 +158,7 @@ ORDER BY avg_cpu_utilisation DESC
 -- Quelles sont les utilisateurs les plus consommateur en ressource
 SELECT u.id_utilisateur, u.nom_legal, SUM(m.temps_total_actif) AS consommation_totale_temps
 FROM monitoring m
-JOIN utilisateurs u ON m.id_utilisateur = u.id_utilisateur
+JOIN utilisateurs_statique u ON m.id_utilisateur = u.id_utilisateur
 GROUP BY u.id_utilisateur, u.nom_legal;=
 ORDER BY consommation_totale_temps DESC
 ;
