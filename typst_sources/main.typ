@@ -627,18 +627,24 @@ Le fichier SQL contenant la création des dimensions et des tables de faits est 
 Le fichier SQL contenant la création de la table pont est disponible dans : `./scripts/create_virtual_view.sql`. Ci dessous un extrait des vues virtuelles :
 
 ```sql
-CREATE VIEW vue_utilisateurs AS
+CREATE VIEW vue_utilisateurs_statique AS
     SELECT 
         id_utilisateur,
         type_utilisateur,
         nom_legal,
-        secteur_activite,
-        pays_utilisateur,
         date_inscription
     FROM
-        utilisateurs;
-```
-```sql
+        utilisateurs_statique;
+
+CREATE VIEW vue_utilisateurs_dynamique AS
+    SELECT 
+        id_utilisateur,
+        secteur_activite,
+        pays_utilisateur,
+        est_actif
+    FROM
+        utilisateurs_dynamique;
+
 CREATE VIEW vue_service AS
     SELECT 
         id_service,
@@ -655,62 +661,53 @@ CREATE VIEW vue_service AS
 On a proposer plusieurs requêtes analytiques qui sont tous présents sur le Github du projet dans : `./scripts/queries.sql`. Voici les requêtes analytiques présenté dans l'introduction  :
 
 ```sql
+
+
 -- Le service génère le plus de chiffre d'affaire
 SELECT s.nom_service, SUM(f.total_brut) AS chiffre_affaire_total
 FROM facturation f
-JOIN Service s ON f.id_service = s.id_service
+JOIN vue_service s ON f.id_service = s.id_service
 GROUP BY s.nom_service
 ORDER BY chiffre_affaire_total DESC
-;
-
-
 
 -- Le pays avec les utilisateurs qui paye le plus
 SELECT u.pays_utilisateur, SUM(f.total_brut) AS chiffre_affaire_total
 FROM facturation f
-JOIN utilisateurs_dynamique u ON f.id_utilisateur = u.id_utilisateur
+JOIN vue_utilisateurs_dynamique u ON f.id_utilisateur = u.id_utilisateur
 WHERE u.est_actif = 'Y'
 GROUP BY u.pays_utilisateur
 ORDER BY chiffre_affaire_total DESC
-;
 
 -- Le mois est le plus rentable de l'année
 SELECT d.annee, d.mois, SUM(f.total_brut) AS revenu_mensuel
 FROM facturation f
-JOIN date_aws d ON f.id_date = d.id_date
+JOIN vue_date d ON f.id_date = d.id_date
 -- WHERE d.annee = 2025 | Pour année spécifique
 GROUP BY d.annee, d.mois
 ORDER BY revenu_mensuel DESC
-;
 
 -- Le service le plus populaire (même s'il est pas le plus rentable)
 SELECT s.nom_service, COUNT(DISTINCT f.id_utilisateur) AS nombre_utilisateurs
 FROM facturation f
-JOIN service s ON f.id_service = s.id_service
+JOIN vue_service s ON f.id_service = s.id_service
 GROUP BY s.nom_service
 ORDER BY nombre_utilisateurs DESC
-;
 
 -- Le type de service par secteur d'activité et le prix moyen dépense
 SELECT s.categorie, u.secteur_activite, AVG(f.total_brut) AS prix_moyen_depense
 FROM facturation f
-JOIN service s ON f.id_service = s.id_service
-JOIN utilisateurs_dynamique u ON f.id_utilisateur = u.id_utilisateur
+JOIN vue_service s ON f.id_service = s.id_service
+JOIN vue_utilisateurs_dynamique u ON f.id_utilisateur = u.id_utilisateur
 WHERE u.est_actif = 'Y'
 GROUP BY s.categorie, u.secteur_activite
-;
 
 -- Évolution annuelle du prix unitaire moyen par service
-SELECT
-    d.annee,
-    s.nom_service,
-    AVG(f.prix_unitaire) AS prix_unitaire_moyen
+SELECT d.annee, s.nom_service, AVG(f.prix_unitaire) AS prix_unitaire_moyen
 FROM facturation f
-JOIN date_aws d ON f.id_date = d.id_date
-JOIN service s `ON` f.id_service = s.id_service
+JOIN vue_date d ON f.id_date = d.id_date
+JOIN vue_service s ON f.id_service = s.id_service
 GROUP BY d.annee, s.nom_service
 ORDER BY d.annee, s.nom_service
-;
 ```
 
 == Vues matérielles
@@ -753,17 +750,16 @@ Cet index est conçu pour optimiser les requêtes suivantes :
 -- Le service génère le plus de chiffre d'affaire
 SELECT s.nom_service, SUM(f.total_brut) AS chiffre_affaire_total
 FROM facturation f
-JOIN service s ON f.id_service = s.id_service
+JOIN vue_service s ON f.id_service = s.id_service
 GROUP BY s.nom_service
 ORDER BY chiffre_affaire_total DESC
 
 -- Le service le plus populaire (même s'il est pas le plus rentable)
 SELECT s.nom_service, COUNT(DISTINCT f.id_utilisateur) AS nombre_utilisateurs
 FROM facturation f
-JOIN service s ON f.id_service = s.id_service
+JOIN vue_service s ON f.id_service = s.id_service
 GROUP BY s.nom_service
 ORDER BY nombre_utilisateurs DESC
-;
 ```
 L'index projette le nom_service (issu de la table Service) directement sur la table de faits facturation.
 ```sql

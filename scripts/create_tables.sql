@@ -188,7 +188,7 @@ CREATE TABLE facturation (
     id_localisation NUMBER(20),
     id_date NUMBER(20),
     id_mode_facturation NUMBER(20),
-    total_brute NUMBER(18, 2),
+    total_brut NUMBER(18, 2),
     total_taxe NUMBER(18, 2),
     remise NUMBER(18, 2),
     total_net NUMBER(18, 2),
