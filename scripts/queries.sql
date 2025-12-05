@@ -3,7 +3,11 @@
 ------------------------------------------------
 
 -- Le service génère le plus de chiffre d'affaire
-xœ
+SELECT s.nom_service, SUM(f.total_brut) AS chiffre_affaire_total
+FROM facturation f
+JOIN Service s ON f.id_service = s.id_service
+GROUP BY s.nom_service
+ORDER BY chiffre_affaire_total DESC
 ;
 
 -- Le pays avec les utilisateurs qui paye le plus
